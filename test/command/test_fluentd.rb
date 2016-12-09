@@ -55,7 +55,7 @@ class TestFluentdCommand < ::Test::Unit::TestCase
 
   def create_cmdline(conf_path, *fluentd_options)
     cmd_path = File.expand_path(File.dirname(__FILE__) + "../../../bin/fluentd")
-    ["bundle", "exec", cmd_path, "-c", conf_path, *fluentd_options]
+    ["bundle", "exec", "ruby", cmd_path, "-c", conf_path, *fluentd_options]
   end
 
   def execute_command(cmdline, chdir=TMP_DIR)
