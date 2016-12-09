@@ -12,18 +12,7 @@ class TestFluentdCommand < ::Test::Unit::TestCase
   setup do
     FileUtils.rm_rf(TMP_DIR)
     FileUtils.mkdir_p(TMP_DIR)
-    @pid = nil
     @worker_pids = []
-  end
-
-  teardown do
-    if @pid
-      Process.kill(:KILL, @pid) rescue nil
-      @worker_pids.each do |pid|
-        Process.kill(:KILL, pid) rescue nil
-      end
-      Timeout.timeout(10){ sleep 0.1 while process_exist?(@pid) }
-    end
   end
 
   def process_exist?(pid)
@@ -65,8 +54,16 @@ class TestFluentdCommand < ::Test::Unit::TestCase
       "BUNDLE_GEMFILE" => gemfile_path,
     }
     IO.popen(env, cmdline, chdir: chdir, err: [:child, :out]) do |io|
-      yield io.pid, io
-      Process.kill(:KILL, io.pid) rescue nil
+      pid = io.pid
+      begin
+        yield io.pid, io
+      ensure
+        Process.kill(:KILL, pid) rescue nil
+        @worker_pids.each do |cpid|
+          Process.kill(:KILL, cpid) rescue nil
+        end
+        Timeout.timeout(10){ sleep 0.1 while process_exist?(pid) }
+      end
     end
   end
 
@@ -76,9 +73,8 @@ class TestFluentdCommand < ::Test::Unit::TestCase
     stdio_buf = ""
     begin
       execute_command(cmdline) do |pid, stdout|
-        @pid = pid
         waiting(timeout) do
-          while process_exist?(@pid) && !matched
+          while process_exist?(pid) && !matched
             readables, _, _ = IO.select([stdout], nil, nil, 1)
             next unless readables
             buf = readables.first.readpartial(1024)
@@ -109,9 +105,8 @@ class TestFluentdCommand < ::Test::Unit::TestCase
     stdio_buf = ""
     begin
       execute_command(cmdline) do |pid, stdout|
-        @pid = pid
         waiting(timeout) do
-          while process_exist?(@pid) && !running
+          while process_exist?(pid) && !running
             readables, _, _ = IO.select([stdout], nil, nil, 1)
             next unless readables
             next if readables.first.eof?
