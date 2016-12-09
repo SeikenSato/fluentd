@@ -61,13 +61,13 @@ class TestFluentdCommand < ::Test::Unit::TestCase
   def execute_command(cmdline, chdir=TMP_DIR)
     gemfile_path = File.expand_path(File.dirname(__FILE__) + "../../../Gemfile")
 
-    rstdio, wstdio = IO.pipe
     env = {
       "BUNDLE_GEMFILE" => gemfile_path,
     }
-    pid = spawn(env, *cmdline, chdir: chdir, out: wstdio, err: [:child, :out])
-    wstdio.close
-    yield pid, rstdio
+    IO.popen(env, cmdline, chdir: chdir, err: [:child, :out]) do |io|
+      yield io.pid, io
+      Process.kill(:KILL, io.pid) rescue nil
+    end
   end
 
   def assert_log_matches(cmdline, *pattern_list, timeout: 10)
@@ -165,7 +165,6 @@ CONF
       assert File.exist?(conf_path)
 
       assert_log_matches(create_cmdline(conf_path), "fluentd worker is now running")
-      assert process_exist?(@pid)
     end
   end
 
