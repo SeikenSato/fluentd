@@ -188,7 +188,6 @@ CONF
         "config error",
         "error=\"Unknown input plugin ''. Run 'gem search -rd fluent-plugin' to find plugins",
       )
-      assert !process_exist?(@pid)
     end
   end
 
@@ -224,7 +223,6 @@ CONF
         "error_class=SyntaxError",
         "in_buggy.rb:5: syntax error, unexpected end-of-input, expecting keyword_end",
       )
-      assert !process_exist?(@pid)
     end
   end
 
@@ -264,7 +262,6 @@ CONF
         create_cmdline(conf_path, "-p", File.dirname(plugin_path)),
         'unexpected error error_class=Fluent::UnrecoverableError error="an unrecoverable error occurs in Fluentd process"',
       )
-      assert !process_exist?(@pid)
     end
   end
 end
