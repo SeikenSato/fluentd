@@ -8,6 +8,7 @@ require 'timeout'
 
 class TestFluentdCommand < ::Test::Unit::TestCase
   TMP_DIR = File.expand_path(File.dirname(__FILE__) + "/../tmp/command/fluentd#{ENV['TEST_ENV_NUMBER']}")
+  WORKER_PID_PATTERN = /starting fluentd worker pid=(\d+) /
 
   setup do
     FileUtils.rm_rf(TMP_DIR)
@@ -73,19 +74,22 @@ class TestFluentdCommand < ::Test::Unit::TestCase
     stdio_buf = ""
     begin
       execute_command(cmdline) do |pid, stdout|
-        waiting(timeout) do
-          while process_exist?(pid) && !matched
-            readables, _, _ = IO.select([stdout], nil, nil, 1)
-            next unless readables
-            buf = readables.first.readpartial(1024)
-            if buf =~ /starting fluentd worker pid=(\d+) /m
-              @worker_pids << $1.to_i
+        begin
+          waiting(timeout) do
+            while process_exist?(pid) && !matched
+              readables, _, _ = IO.select([stdout], nil, nil, 1)
+              next unless readables
+
+              stdio_buf << readables.first.readpartial(1024)
+              lines = stdio_buf.split("\n")
+              if pattern_list.all?{|ptn| lines.any?{|line| ptn.is_a?(Regexp) ? ptn.match(line) : line.include?(ptn) } }
+                matched = true
+              end
             end
-            stdio_buf << buf
-            lines = stdio_buf.split("\n")
-            if pattern_list.all?{|ptn| lines.any?{|line| ptn.is_a?(Regexp) ? ptn.match(line) : line.include?(ptn) } }
-              matched = true
-            end
+          end
+        ensure
+          stdio_buf.scan(WORKER_PID_PATTERN) do |worker_pid|
+            @worker_pids << worker_pid.first.to_i
           end
         end
       end
@@ -105,24 +109,26 @@ class TestFluentdCommand < ::Test::Unit::TestCase
     stdio_buf = ""
     begin
       execute_command(cmdline) do |pid, stdout|
-        waiting(timeout) do
-          while process_exist?(pid) && !running
-            readables, _, _ = IO.select([stdout], nil, nil, 1)
-            next unless readables
-            next if readables.first.eof?
+        begin
+          waiting(timeout) do
+            while process_exist?(pid) && !running
+              readables, _, _ = IO.select([stdout], nil, nil, 1)
+              next unless readables
+              next if readables.first.eof?
 
-            buf = readables.first.readpartial(1024)
-            if buf =~ /starting fluentd worker pid=(\d+) /m
-              @worker_pids << $1.to_i
+              stdio_buf << readables.first.readpartial(1024)
+              lines = stdio_buf.split("\n")
+              if lines.any?{|line| line.include?("fluentd worker is now running") }
+                running = true
+              end
+              if pattern_list.all?{|ptn| lines.any?{|line| ptn.is_a?(Regexp) ? ptn.match(line) : line.include?(ptn) } }
+                matched = true
+              end
             end
-            stdio_buf << buf
-            lines = stdio_buf.split("\n")
-            if lines.any?{|line| line.include?("fluentd worker is now running") }
-              running = true
-            end
-            if pattern_list.all?{|ptn| lines.any?{|line| ptn.is_a?(Regexp) ? ptn.match(line) : line.include?(ptn) } }
-              matched = true
-            end
+          end
+        ensure
+          stdio_buf.scan(WORKER_PID_PATTERN) do |worker_pid|
+            @worker_pids << worker_pid.first.to_i
           end
         end
       end
