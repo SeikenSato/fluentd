@@ -54,15 +54,19 @@ class TestFluentdCommand < ::Test::Unit::TestCase
     env = {
       "BUNDLE_GEMFILE" => gemfile_path,
     }
-    IO.popen(env, cmdline, chdir: chdir, err: [:child, :out]) do |io|
+    p(here: "executing process", env: env, cmdline: cmdline)
+    # IO.popen(env, cmdline, chdir: chdir, err: [:child, :out]) do |io|
+    IO.popen(env, cmdline, chdir: chdir, err: "stderr") do |io|
       pid = io.pid
       begin
         yield io.pid, io
+        p(here: "execute command", pid: pid, worker_pids: @worker_pids)
       ensure
         Process.kill(:KILL, pid) rescue nil
         @worker_pids.each do |cpid|
           Process.kill(:KILL, cpid) rescue nil
         end
+        p(here: "execute command", pid: pid, exist: process_exist?(pid), worker_pids: @worker_pids, exists: @worker_pids.map{|i| process_exist?(i) })
         Timeout.timeout(10){ sleep 0.1 while process_exist?(pid) }
       end
     end
@@ -169,105 +173,105 @@ CONF
     end
   end
 
-  sub_test_case 'configuration with wrong plugin type' do
-    test 'failed to start' do
-      conf = <<CONF
-<source>
-  @type
-  @id dummy
-  @label @dummydata
-  tag dummy
-  dummy {"message": "yay!"}
-</source>
-<label @dummydata>
-  <match dummy>
-    @type null
-    @id   blackhole
-  </match>
-</label>
-CONF
-      conf_path = create_conf_file('type_missing.conf', conf)
-      assert File.exist?(conf_path)
+#   sub_test_case 'configuration with wrong plugin type' do
+#     test 'failed to start' do
+#       conf = <<CONF
+# <source>
+#   @type
+#   @id dummy
+#   @label @dummydata
+#   tag dummy
+#   dummy {"message": "yay!"}
+# </source>
+# <label @dummydata>
+#   <match dummy>
+#     @type null
+#     @id   blackhole
+#   </match>
+# </label>
+# CONF
+#       conf_path = create_conf_file('type_missing.conf', conf)
+#       assert File.exist?(conf_path)
 
-      assert_fluentd_fails_to_start(
-        create_cmdline(conf_path),
-        "config error",
-        "error=\"Unknown input plugin ''. Run 'gem search -rd fluent-plugin' to find plugins",
-      )
-    end
-  end
+#       assert_fluentd_fails_to_start(
+#         create_cmdline(conf_path),
+#         "config error",
+#         "error=\"Unknown input plugin ''. Run 'gem search -rd fluent-plugin' to find plugins",
+#       )
+#     end
+#   end
 
-  sub_test_case 'configuration to load plugin file with syntax error' do
-    test 'failed to start' do
-      script =  "require 'fluent/plugin/input'\n"
-      script << "module Fluent::Plugin\n"
-      script << "  class BuggyInput < Input\n"
-      script << "    Fluent::Plugin.register_input('buggy', self)\n"
-      script << "  end\n"
-      plugin_path = create_plugin_file('in_buggy.rb', script)
+#   sub_test_case 'configuration to load plugin file with syntax error' do
+#     test 'failed to start' do
+#       script =  "require 'fluent/plugin/input'\n"
+#       script << "module Fluent::Plugin\n"
+#       script << "  class BuggyInput < Input\n"
+#       script << "    Fluent::Plugin.register_input('buggy', self)\n"
+#       script << "  end\n"
+#       plugin_path = create_plugin_file('in_buggy.rb', script)
 
-      conf = <<CONF
-<source>
-  @type buggy
-  @id dummy
-  @label @dummydata
-  tag dummy
-  dummy {"message": "yay!"}
-</source>
-<label @dummydata>
-  <match dummy>
-    @type null
-    @id   blackhole
-  </match>
-</label>
-CONF
-      conf_path = create_conf_file('buggy_plugin.conf', conf)
-      assert File.exist?(conf_path)
+#       conf = <<CONF
+# <source>
+#   @type buggy
+#   @id dummy
+#   @label @dummydata
+#   tag dummy
+#   dummy {"message": "yay!"}
+# </source>
+# <label @dummydata>
+#   <match dummy>
+#     @type null
+#     @id   blackhole
+#   </match>
+# </label>
+# CONF
+#       conf_path = create_conf_file('buggy_plugin.conf', conf)
+#       assert File.exist?(conf_path)
 
-      assert_fluentd_fails_to_start(
-        create_cmdline(conf_path, "-p", File.dirname(plugin_path)),
-        "error_class=SyntaxError",
-        "in_buggy.rb:5: syntax error, unexpected end-of-input, expecting keyword_end",
-      )
-    end
-  end
+#       assert_fluentd_fails_to_start(
+#         create_cmdline(conf_path, "-p", File.dirname(plugin_path)),
+#         "error_class=SyntaxError",
+#         "in_buggy.rb:5: syntax error, unexpected end-of-input, expecting keyword_end",
+#       )
+#     end
+#   end
 
-  sub_test_case 'configuration to load plugin which raises unrecoverable error in #start' do
-    test 'failed to start' do
-      script =  "require 'fluent/plugin/input'\n"
-      script << "require 'fluent/error'\n"
-      script << "module Fluent::Plugin\n"
-      script << "  class CrashingInput < Input\n"
-      script << "    Fluent::Plugin.register_input('crashing', self)\n"
-      script << "    def start\n"
-      script << "      raise Fluent::UnrecoverableError"
-      script << "    end\n"
-      script << "  end\n"
-      script << "end\n"
-      plugin_path = create_plugin_file('in_crashing.rb', script)
+#   sub_test_case 'configuration to load plugin which raises unrecoverable error in #start' do
+#     test 'failed to start' do
+#       script =  "require 'fluent/plugin/input'\n"
+#       script << "require 'fluent/error'\n"
+#       script << "module Fluent::Plugin\n"
+#       script << "  class CrashingInput < Input\n"
+#       script << "    Fluent::Plugin.register_input('crashing', self)\n"
+#       script << "    def start\n"
+#       script << "      raise Fluent::UnrecoverableError"
+#       script << "    end\n"
+#       script << "  end\n"
+#       script << "end\n"
+#       plugin_path = create_plugin_file('in_crashing.rb', script)
 
-      conf = <<CONF
-<source>
-  @type crashing
-  @id dummy
-  @label @dummydata
-  tag dummy
-  dummy {"message": "yay!"}
-</source>
-<label @dummydata>
-  <match dummy>
-    @type null
-    @id   blackhole
-  </match>
-</label>
-CONF
-      conf_path = create_conf_file('crashing_plugin.conf', conf)
-      assert File.exist?(conf_path)
+#       conf = <<CONF
+# <source>
+#   @type crashing
+#   @id dummy
+#   @label @dummydata
+#   tag dummy
+#   dummy {"message": "yay!"}
+# </source>
+# <label @dummydata>
+#   <match dummy>
+#     @type null
+#     @id   blackhole
+#   </match>
+# </label>
+# CONF
+#       conf_path = create_conf_file('crashing_plugin.conf', conf)
+#       assert File.exist?(conf_path)
 
-      assert_fluentd_fails_to_start(
-        create_cmdline(conf_path, "-p", File.dirname(plugin_path)),
-        'unexpected error error_class=Fluent::UnrecoverableError error="an unrecoverable error occurs in Fluentd process"',
-      )
-    end
-  end
+#       assert_fluentd_fails_to_start(
+#         create_cmdline(conf_path, "-p", File.dirname(plugin_path)),
+#         'unexpected error error_class=Fluent::UnrecoverableError error="an unrecoverable error occurs in Fluentd process"',
+#       )
+#     end
+#   end
 end
